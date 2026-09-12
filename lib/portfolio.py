@@ -1,4 +1,4 @@
-"""Local JSON-backed watchlist/portfolio storage (personal use, not committed to git)."""
+"""Local JSON-backed holdings storage (personal use, never committed to git)."""
 import json
 import os
 
@@ -29,9 +29,7 @@ def save_portfolio(data: dict):
 
 def add_holding(ticker: str, shares: float, cost_basis: float):
     data = load_portfolio()
-    data["holdings"].append(
-        {"ticker": ticker.upper(), "shares": shares, "cost_basis": cost_basis}
-    )
+    data["holdings"].append({"ticker": ticker.upper(), "shares": shares, "cost_basis": cost_basis})
     save_portfolio(data)
 
 
