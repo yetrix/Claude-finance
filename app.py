@@ -59,10 +59,13 @@ This app reads API keys from a `.env` file in the project root:
 ```
 ANTHROPIC_API_KEY=your_key_here
 FRED_API_KEY=your_key_here
+FMP_API_KEY=your_key_here
 ```
 
-`yfinance` requires no API key. If a key is missing, the relevant page shows a
-friendly notice instead of an error.
+`yfinance` requires no API key and is the primary data source everywhere.
+FMP is optional — it only fills gaps when yfinance comes back empty. If a
+key is missing, the relevant page shows a friendly notice instead of an
+error.
 """
 )
 
