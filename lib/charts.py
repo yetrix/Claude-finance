@@ -209,7 +209,7 @@ def render_price_chart(
     fig.update_layout(
         template="plotly_dark",
         height=height,
-        title=title,
+        title=title or "",
         margin=dict(l=10, r=60, t=40 if title else 20, b=10),
         hovermode="x unified",
     )
