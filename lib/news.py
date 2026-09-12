@@ -1,5 +1,6 @@
-"""News aggregation: yfinance first, Yahoo Finance RSS as a fallback when yfinance
-returns nothing (rate-limited, ticker with no news, etc.)."""
+"""News aggregation: yfinance first, then FMP (if a key is configured), then
+Yahoo Finance RSS as a last resort — each tier only runs if the previous one
+came back empty."""
 from __future__ import annotations
 
 import xml.etree.ElementTree as ET
@@ -9,6 +10,8 @@ from email.utils import parsedate_to_datetime
 import requests
 import streamlit as st
 import yfinance as yf
+
+from lib import fmp
 
 HEADERS = {"User-Agent": "Mozilla/5.0 (compatible; StockMarketAnalystNews/1.0)"}
 RSS_TIMEOUT = 6
@@ -81,6 +84,9 @@ def ticker_news(ticker: str, limit: int = 10) -> list[dict]:
         pass
 
     if not items:
+        items = fmp.get_stock_news(ticker, limit=limit)
+
+    if not items:
         try:
             url = f"https://feeds.finance.yahoo.com/rss/2.0/headline?s={ticker}&region=US&lang=en-US"
             resp = requests.get(url, headers=HEADERS, timeout=RSS_TIMEOUT)
@@ -108,6 +114,9 @@ def market_news(limit: int = 10) -> list[dict]:
             if normalized and normalized["title"] not in seen_titles:
                 seen_titles.add(normalized["title"])
                 items.append(normalized)
+
+    if not items:
+        items = fmp.get_general_news(limit=limit)
 
     if not items:
         try:

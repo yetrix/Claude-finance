@@ -22,8 +22,11 @@ and "Fundamental quality" scores are descriptive composites, not signals.
   a risk score
 - **News** — aggregated market headlines and by-ticker search
 
-`yfinance` requires no API key. FRED and Claude features need your own free
-keys (see Setup) and degrade to a friendly on-page notice when missing.
+`yfinance` requires no API key and remains the primary data source everywhere.
+FRED and Claude features need your own free keys (see Setup) and degrade to a
+friendly on-page notice when missing. An optional FMP key adds a fallback for
+quotes/fundamentals/news when yfinance comes back empty (rate-limited, bad
+ticker, etc.) — never a replacement, just gap-filling.
 
 ## Setup
 
@@ -42,10 +45,13 @@ keys (see Setup) and degrade to a friendly on-page notice when missing.
    ```
    ANTHROPIC_API_KEY=your_key_here
    FRED_API_KEY=your_key_here
+   FMP_API_KEY=your_key_here
    ```
 
    - Get a free FRED API key at https://fred.stlouisfed.org/docs/api/api_key.html
    - Get an Anthropic API key at https://console.anthropic.com
+   - Get a free FMP API key at https://site.financialmodelingprep.com/developer/docs
+     (optional — only used as a fallback when yfinance comes back empty)
 
    Never commit your `.env` file or paste real keys into chat, issues, or code.
 
@@ -81,7 +87,8 @@ lib/
   market_data.py             # Cached yfinance wrappers, index/sector/period constants
   charts.py                  # render_price_chart, render_sparkline, render_gauge
   logos.py                   # Ticker->domain map + base64 logo loader
-  news.py                    # yfinance news + Yahoo RSS fallback
+  news.py                    # yfinance news -> FMP -> Yahoo RSS fallback chain
+  fmp.py                     # FMP REST client (quotes/fundamentals/news fallback)
   macro.py / rates.py        # FRED indicators and yield curve
   signals.py                 # Descriptive technical/fundamental scoring
   risk.py                    # ETF and portfolio risk scoring

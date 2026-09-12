@@ -28,6 +28,11 @@ def get_fred_key() -> str | None:
     return key if key else None
 
 
+def get_fmp_key() -> str | None:
+    key = os.getenv("FMP_API_KEY")
+    return key if key else None
+
+
 def missing_key_message(service: str) -> str:
     if service == "anthropic":
         return (
@@ -39,6 +44,12 @@ def missing_key_message(service: str) -> str:
             "🔑 No FRED API key found. Add `FRED_API_KEY` to your `.env` file to "
             "enable macro indicators on this page. Get a free key at "
             "https://fred.stlouisfed.org/docs/api/api_key.html"
+        )
+    if service == "fmp":
+        return (
+            "🔑 No FMP API key found. Add `FMP_API_KEY` to your `.env` file for "
+            "richer fundamentals/quote/news fallback data. Get a free key at "
+            "https://site.financialmodelingprep.com/developer/docs"
         )
     return f"🔑 Missing API key for {service}."
 

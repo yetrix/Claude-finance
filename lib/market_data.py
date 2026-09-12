@@ -7,6 +7,8 @@ import pandas as pd
 import streamlit as st
 import yfinance as yf
 
+from lib import fmp
+
 # --- Reference data -------------------------------------------------------
 
 INDEX_TICKERS = [
@@ -131,13 +133,22 @@ def get_quote(ticker: str) -> dict:
                 prev_close = prev_close if prev_close is not None else (
                     float(hist["Close"].iloc[-2]) if len(hist) > 1 else price
                 )
-        change = (price - prev_close) if (price is not None and prev_close is not None) else None
-        pct_change = (change / prev_close * 100) if (change is not None and prev_close) else None
         name = None
         try:
             name = tk.info.get("shortName") or tk.info.get("longName")
         except Exception:
             pass
+
+        if price is None:
+            # yfinance came up empty (rate-limited, delisted, network hiccup) —
+            # fall back to FMP if the user has configured a key. fmp.get_quote
+            # returns None on any failure, so this is always safe to try.
+            fmp_quote = fmp.get_quote(ticker)
+            if fmp_quote:
+                return {**fmp_quote, "symbol": ticker, "name": fmp_quote.get("name") or name or ticker}
+
+        change = (price - prev_close) if (price is not None and prev_close is not None) else None
+        pct_change = (change / prev_close * 100) if (change is not None and prev_close) else None
         return {
             "symbol": ticker,
             "name": name or ticker,
@@ -148,6 +159,9 @@ def get_quote(ticker: str) -> dict:
             "volume": volume,
         }
     except Exception:
+        fmp_quote = fmp.get_quote(ticker)
+        if fmp_quote:
+            return {**fmp_quote, "symbol": ticker}
         return {
             "symbol": ticker, "name": ticker, "price": None, "change": None,
             "pct_change": None, "previous_close": None, "volume": None,
@@ -189,7 +203,7 @@ def is_etf(ticker: str) -> bool:
 @st.cache_data(ttl=900, show_spinner=False)
 def get_stock_fundamentals(ticker: str) -> dict:
     info = get_info(ticker)
-    return {
+    fundamentals = {
         "name": info.get("longName") or info.get("shortName") or ticker,
         "sector": info.get("sector"),
         "industry": info.get("industry"),
@@ -217,6 +231,17 @@ def get_stock_fundamentals(ticker: str) -> dict:
         "number_of_analysts": info.get("numberOfAnalystOpinions"),
         "business_summary": info.get("longBusinessSummary"),
     }
+
+    # Fill gaps (never overwrite) from FMP if a key is configured. yfinance
+    # remains authoritative — FMP just patches holes (e.g. yfinance's .info
+    # missing fields, or empty entirely on a bad fetch).
+    if any(v is None for v in fundamentals.values()):
+        fmp_fundamentals = fmp.get_fundamentals(ticker)
+        for key, value in fmp_fundamentals.items():
+            if fundamentals.get(key) is None and value is not None:
+                fundamentals[key] = value
+
+    return fundamentals
 
 
 @st.cache_data(ttl=1800, show_spinner=False)
