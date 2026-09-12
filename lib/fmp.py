@@ -8,8 +8,9 @@ own current guidance for this key.
 """
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import datetime, timedelta
 
+import pandas as pd
 import requests
 import streamlit as st
 
@@ -17,6 +18,8 @@ from lib.config import get_fmp_key
 
 BASE_URL = "https://financialmodelingprep.com/stable"
 TIMEOUT = 6
+
+INTRADAY_ENDPOINTS = {"5m": "intraday-5-min", "15m": "intraday-15-min"}
 
 
 def _get(endpoint: str, params: dict | None = None) -> list | dict | None:
@@ -54,6 +57,66 @@ def _parse_published(date_str: str | None) -> datetime | None:
         return datetime.strptime(date_str, "%Y-%m-%d %H:%M:%S")
     except ValueError:
         return None
+
+
+def _rows_to_ohlcv(rows: list[dict]) -> pd.DataFrame:
+    if not rows:
+        return pd.DataFrame()
+    df = pd.DataFrame(rows)
+    df["date"] = pd.to_datetime(df["date"])
+    df = df.set_index("date").sort_index()
+    df = df.rename(columns={"open": "Open", "high": "High", "low": "Low", "close": "Close", "volume": "Volume"})
+    return df[["Open", "High", "Low", "Close", "Volume"]]
+
+
+@st.cache_data(ttl=300, show_spinner=False)
+def get_daily_history(ticker: str, days: int = 5) -> pd.DataFrame:
+    """Always-daily-bar OHLCV for the last `days` calendar days, independent of
+    PERIOD_MAP's interval choice. Used by get_prev_close, which needs an actual
+    daily close, not an intraday bar."""
+    today = datetime.now().date()
+    rows = _get("historical-price-eod/full", {
+        "symbol": ticker,
+        "from": (today - timedelta(days=days)).isoformat(),
+        "to": today.isoformat(),
+    })
+    return _rows_to_ohlcv(rows or [])
+
+
+@st.cache_data(ttl=300, show_spinner=False)
+def get_history(ticker: str, period_label: str = "6M") -> pd.DataFrame:
+    """OHLCV history matching lib.market_data.get_history's shape/index, used as
+    a fallback when yfinance is blocked or empty (e.g. cloud-hosted deployments
+    where Yahoo Finance rate-limits or blocks shared data-center IP ranges)."""
+    from lib.market_data import PERIOD_MAP  # lazy import avoids a circular import
+
+    cfg = PERIOD_MAP.get(period_label, PERIOD_MAP["6M"])
+    interval = cfg["interval"]
+    today = datetime.now().date()
+
+    params = {"symbol": ticker}
+    if cfg.get("max"):
+        pass  # let FMP return its default (~5000-record cap), no from/to needed
+    elif cfg.get("ytd"):
+        params["from"] = today.replace(month=1, day=1).isoformat()
+        params["to"] = today.isoformat()
+    else:
+        params["from"] = (today - timedelta(days=cfg["days"])).isoformat()
+        params["to"] = today.isoformat()
+
+    if interval in INTRADAY_ENDPOINTS:
+        rows = _get(INTRADAY_ENDPOINTS[interval], params)
+        return _rows_to_ohlcv(rows or [])
+
+    rows = _get("historical-price-eod/full", params)
+    df = _rows_to_ohlcv(rows or [])
+    if df.empty or interval not in ("1wk", "1mo"):
+        return df
+
+    rule = "W" if interval == "1wk" else "ME"
+    return df.resample(rule).agg(
+        {"Open": "first", "High": "max", "Low": "min", "Close": "last", "Volume": "sum"}
+    ).dropna()
 
 
 @st.cache_data(ttl=60, show_spinner=False)

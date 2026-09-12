@@ -61,11 +61,14 @@ PERIOD_MAP = {
 
 @st.cache_data(ttl=300, show_spinner=False)
 def get_history(ticker: str, period_label: str = "6M") -> pd.DataFrame:
-    """Fetch OHLCV history for a single ticker over one of the PERIOD_MAP windows."""
+    """Fetch OHLCV history for a single ticker over one of the PERIOD_MAP windows.
+    Falls back to FMP (if a key is configured) when yfinance comes back empty —
+    e.g. on cloud hosts where Yahoo Finance blocks shared data-center IPs."""
     cfg = PERIOD_MAP.get(period_label, PERIOD_MAP["6M"])
     interval = cfg["interval"]
-    tk = yf.Ticker(ticker)
+    hist = pd.DataFrame()
     try:
+        tk = yf.Ticker(ticker)
         if cfg.get("max"):
             hist = tk.history(period="max", interval=interval)
         elif cfg.get("ytd"):
@@ -73,19 +76,32 @@ def get_history(ticker: str, period_label: str = "6M") -> pd.DataFrame:
         else:
             start = date.today() - timedelta(days=cfg["days"])
             hist = tk.history(start=start, interval=interval)
-        return hist if hist is not None else pd.DataFrame()
+        hist = hist if hist is not None else pd.DataFrame()
     except Exception:
-        return pd.DataFrame()
+        hist = pd.DataFrame()
+
+    if hist.empty:
+        hist = fmp.get_history(ticker, period_label)
+
+    return hist
 
 
 @st.cache_data(ttl=300, show_spinner=False)
 def get_prev_close(ticker: str) -> float | None:
     """Yesterday's close, used as the 1D chart baseline (not today's first bar)."""
-    tk = yf.Ticker(ticker)
+    daily = pd.DataFrame()
     try:
-        daily = tk.history(period="5d", interval="1d")
-        if daily is None or len(daily) < 2:
-            return None
+        daily = yf.Ticker(ticker).history(period="5d", interval="1d")
+        daily = daily if daily is not None else pd.DataFrame()
+    except Exception:
+        daily = pd.DataFrame()
+
+    if len(daily) < 2:
+        daily = fmp.get_daily_history(ticker, days=5)
+
+    if daily is None or daily.empty or len(daily) < 2:
+        return None
+    try:
         return float(daily["Close"].iloc[-2])
     except Exception:
         return None
